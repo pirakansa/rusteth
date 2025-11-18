@@ -1,10 +1,10 @@
 [package]
-name = "cli-template"
+name = "rusteth"
 version = "0.1.0"
 edition = "2021"
-description = "Minimal Rust CLI template"
+description = "Distro-agnostic network management CLI for Linux hosts"
 license = "MIT OR Apache-2.0"
-repository = ""
+repository = "https://github.com/rusteth/rusteth"
 readme = "README.md"
 
 [dependencies]

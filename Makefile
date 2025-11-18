@@ -1,6 +1,6 @@
 # Makefile
 
-PROJECT_NAME        := cli-template
+PROJECT_NAME        := rusteth
 LINUX_AMD64         := linux-amd64
 LINUX_ARM           := linux-arm
 LINUX_ARM64         := linux-arm64

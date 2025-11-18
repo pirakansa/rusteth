@@ -51,11 +51,11 @@ enum ConfigFormatArg {
     Json,
 }
 
-impl From<ConfigFormatArg> for cli_template::NetplanFormat {
+impl From<ConfigFormatArg> for rusteth::NetplanFormat {
     fn from(value: ConfigFormatArg) -> Self {
         match value {
-            ConfigFormatArg::Yaml => cli_template::NetplanFormat::Yaml,
-            ConfigFormatArg::Json => cli_template::NetplanFormat::Json,
+            ConfigFormatArg::Yaml => rusteth::NetplanFormat::Yaml,
+            ConfigFormatArg::Json => rusteth::NetplanFormat::Json,
         }
     }
 }
@@ -67,7 +67,7 @@ fn init_tracing(verbosity: u8) {
         _ => Level::DEBUG,
     };
     let filter = EnvFilter::from_default_env()
-        .add_directive(format!("cli_template={}", level).parse().unwrap())
+        .add_directive(format!("rusteth={}", level).parse().unwrap())
         .add_directive(Level::WARN.into());
 
     tracing_subscriber::fmt()
@@ -77,7 +77,7 @@ fn init_tracing(verbosity: u8) {
         .init();
 }
 
-fn render_interfaces_table(interfaces: &[cli_template::InterfaceInfo]) {
+fn render_interfaces_table(interfaces: &[rusteth::InterfaceInfo]) {
     println!(
         "{:<16} {:<18} {:<10} {:<8} {:>12} {:>12}",
         "NAME", "MAC", "STATE", "MTU", "RX(bytes)", "TX(bytes)"
@@ -106,7 +106,7 @@ fn render_interfaces_table(interfaces: &[cli_template::InterfaceInfo]) {
     }
 }
 
-fn print_interface_config(info: &cli_template::InterfaceInfo) {
+fn print_interface_config(info: &rusteth::InterfaceInfo) {
     println!("Interface: {}", info.name);
     println!(
         "  MAC: {}",
@@ -152,7 +152,7 @@ fn main() -> Result<()> {
 
     match cli.command {
         Commands::Interfaces { json } => {
-            let interfaces = cli_template::list_interfaces()?;
+            let interfaces = rusteth::list_interfaces()?;
             if json {
                 println!("{}", serde_json::to_string_pretty(&interfaces)?);
             } else {
@@ -161,14 +161,14 @@ fn main() -> Result<()> {
         }
         Commands::Config { interface, json } => {
             if let Some(name) = interface {
-                let info = cli_template::get_interface(&name)?;
+                let info = rusteth::get_interface(&name)?;
                 if json {
                     println!("{}", serde_json::to_string_pretty(&info)?);
                 } else {
                     print_interface_config(&info);
                 }
             } else {
-                let interfaces = cli_template::list_interfaces()?;
+                let interfaces = rusteth::list_interfaces()?;
                 if json {
                     println!("{}", serde_json::to_string_pretty(&interfaces)?);
                 } else {
@@ -183,8 +183,8 @@ fn main() -> Result<()> {
             format,
             dry_run,
         } => {
-            let doc = cli_template::load_netplan_from_path(path, format.map(Into::into))?;
-            let result = cli_template::apply_netplan(&doc, dry_run)?;
+            let doc = rusteth::load_netplan_from_path(path, format.map(Into::into))?;
+            let result = rusteth::apply_netplan(&doc, dry_run)?;
             println!("{}", serde_json::to_string_pretty(&result)?);
         }
     }
