@@ -1,0 +1,20 @@
+{
+    "initializeCommand": "${localWorkspaceFolder}/.devcontainer/init.sh",
+    "onCreateCommand": "sudo apt-get update && sudo apt-get install -y openssh-client && mkdir -p /home/${localEnv:USERNAME:builder}/bin && curl -L https://github.com/openai/codex/releases/download/rust-v0.58.0/codex-x86_64-unknown-linux-musl.zst | zstd -d -o /home/${localEnv:USERNAME:builder}/bin/codex && chmod a+x /home/${localEnv:USERNAME:builder}/bin/codex",
+    "build": {
+        "dockerfile": "Dockerfile",
+        "args": {
+            "CONTAINER_USERNAME": "${localEnv:USERNAME:builder}",
+            "CONTAINER_USERID": "${localEnv:USERID:1000}"
+        }
+    },
+    "mounts": [
+        "source=${localEnv:HOME}/.codex,target=/home/${localEnv:USERNAME:builder}/.codex,type=bind,consistency=cached"
+    ],
+    "workspaceMount": "source=${localWorkspaceFolder},target=/work/${localWorkspaceFolderBasename},type=bind,consistency=cached",
+    "workspaceFolder": "/work/${localWorkspaceFolderBasename}",
+    "remoteUser": "${localEnv:USERNAME:builder}",
+    "remoteEnv": {
+        "PATH": "${containerEnv:PATH}:/home/${localEnv:USERNAME:builder}/bin"
+    }
+}
