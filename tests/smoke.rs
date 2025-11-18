@@ -1,6 +1,14 @@
-use cli_template::greet;
+use cli_template::NetplanFormat;
+use std::str::FromStr;
 
 #[test]
-fn it_runs_basic_logic() {
-    assert_eq!(greet(None), "Hello, world!");
+fn it_parses_known_formats() {
+    assert!(matches!(
+        NetplanFormat::from_str("yaml"),
+        Ok(NetplanFormat::Yaml)
+    ));
+    assert!(matches!(
+        NetplanFormat::from_str("json"),
+        Ok(NetplanFormat::Json)
+    ));
 }
