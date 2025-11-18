@@ -1,4 +1,4 @@
-use cli_template::NetplanFormat;
+use rusteth::NetplanFormat;
 use std::str::FromStr;
 
 #[test]
