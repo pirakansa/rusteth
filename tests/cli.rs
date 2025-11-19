@@ -22,7 +22,7 @@ fn apply_command_validates_sample_config() {
     let mut file = File::create(&config_path).unwrap();
     writeln!(
         file,
-        "network:\n  version: 2\n  ethernets:\n    lo:\n      dhcp4: false"
+        "network:\n  version: 2\n  ethernets:\n    lo:\n      mtu: 1400"
     )
     .unwrap();
 
@@ -42,4 +42,12 @@ fn apply_command_validates_sample_config() {
         .as_array()
         .unwrap()
         .contains(&Value::String("lo".into())));
+    let actions = json["actions"].as_array().expect("actions array");
+    assert_eq!(actions.len(), 1);
+    assert_eq!(actions[0]["interface"], Value::String("lo".into()));
+    assert_eq!(actions[0]["status"], Value::String("planned".into()));
+    assert_eq!(
+        actions[0]["operation"]["kind"],
+        Value::String("set_mtu".into())
+    );
 }

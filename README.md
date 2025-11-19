@@ -62,18 +62,25 @@ Add `--json` to emit structured records.
 
 ### `apply`
 
-Validate (and eventually apply) a Netplan YAML/JSON document against the interfaces that actually exist on the host.
+Validate (and, when run without `--dry-run`, apply) a Netplan YAML/JSON document against the interfaces that actually exist on the host.
 
 ```bash
 rusteth apply ./netplan/servers.yaml --dry-run
 # {
 #   "planned_interfaces": ["eth0", "eth1"],
 #   "dry_run": true,
-#   "message": "validation succeeded (dry run)"
+#   "message": "validation succeeded (dry run)",
+#   "actions": [
+#     {
+#       "interface": "eth0",
+#       "status": "planned",
+#       "operation": { "kind": "set_mtu", "mtu": 9000 }
+#     }
+#   ]
 # }
 ```
 
-Use `--format yaml|json` to override file-extension detection, and omit `--dry-run` only when you intend to hand off the plan to the renderer backend.
+Use `--format yaml|json` to override file-extension detection. During real applies, `rusteth` talks to Netlink directly and currently supports MTU changes, static address assignments, and default gateways; additional Netplan keys fall back to warnings. Root privileges are required to change kernel state, so prefer `--dry-run` while iterating on a plan.
 
 ### `rusteth-monitor`
 
@@ -110,7 +117,7 @@ If you need additional backends (e.g., `nmstate`, `ifconfig`-based stacks, or `i
 - **`systemd-networkd` / NetworkManager:** Netplan documents validated by `rusteth` can be fed to these renderers. `rusteth` checks that every interface referenced by the plan exists on the host before you run `netplan apply`, reducing the chance of disruptive configuration pushes.
 - **Netlink and sysfs:** Interface data is read straight from `/sys/class/net` and `/proc/net/dev`, which are backed by the kernel's Netlink providers. This mirrors what tools like `ip link` expose but keeps the output consistent across distributions.
 
-Future work will extend the `apply` subcommand to talk directly to Netlink for on-the-fly configuration changes without invoking external binaries.
+Future work will expand the `apply` subcommand to cover VLANs, bonds, DHCP orchestration, and other renderer-specific features.
 
 ## Development
 
