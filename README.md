@@ -75,6 +75,25 @@ rusteth apply ./netplan/servers.yaml --dry-run
 
 Use `--format yaml|json` to override file-extension detection, and omit `--dry-run` only when you intend to hand off the plan to the renderer backend.
 
+### `rusteth-monitor`
+
+`rusteth-monitor` is a companion binary that subscribes to Netlink multicast groups and streams interface/link/address changes in real time. It is useful when you want to be notified immediately whenever a link flaps or an IP address is assigned/removed.
+
+Key flags:
+
+- `--json` &mdash; emit newline-delimited JSON (NDJSON) records suitable for log aggregators.
+- `--filter link,address,route` &mdash; restrict the subscribed Netlink groups (comma-separated or repeated).
+- `--no-initial-snapshot` &mdash; skip the initial `/sys/class/net` inventory if you only care about future events.
+- `--once` &mdash; exit after printing the snapshot, which is handy for scripts that just need the boot-time state.
+
+Example:
+
+```bash
+cargo run --bin rusteth-monitor -- --filter link,address
+# link eth0 is up
+# address added 192.0.2.10 on eth0
+```
+
 ## Supported platforms and distributions
 
 - **Linux (x86_64/aarch64):** fully supported. Interface discovery relies on `/sys/class/net` and `/proc/net/dev`, so any modern kernel works. Netplan validation aligns with distributions such as Ubuntu Server, Pop!\_OS, and Debian derivatives that ship Netplan.
