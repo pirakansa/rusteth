@@ -165,6 +165,14 @@ pub struct ApplyResult {
 
 pub fn apply_netplan(config: &NetplanDocument, dry_run: bool) -> Result<ApplyResult, RustethError> {
     let interfaces = list_interfaces()?;
+    apply_netplan_with_interfaces(config, dry_run, &interfaces)
+}
+
+pub fn apply_netplan_with_interfaces(
+    config: &NetplanDocument,
+    dry_run: bool,
+    interfaces: &[InterfaceInfo],
+) -> Result<ApplyResult, RustethError> {
     let existing: std::collections::HashSet<_> =
         interfaces.iter().map(|iface| iface.name.clone()).collect();
     let planned: Vec<String> = config.network.ethernets.keys().cloned().collect();
@@ -198,19 +206,21 @@ pub fn apply_netplan(config: &NetplanDocument, dry_run: bool) -> Result<ApplyRes
 #[cfg(target_os = "linux")]
 mod linux {
     use super::{InterfaceInfo, InterfaceStats, RustethError};
-    use std::{
-        collections::HashMap,
-        fs,
-        path::{Path, PathBuf},
-    };
+    use std::{collections::HashMap, fs, path::Path};
 
     const SYS_CLASS_NET: &str = "/sys/class/net";
     const PROC_NET_DEV: &str = "/proc/net/dev";
 
     pub(super) fn list_interfaces() -> Result<Vec<InterfaceInfo>, RustethError> {
+        list_interfaces_from_paths(Path::new(SYS_CLASS_NET), Path::new(PROC_NET_DEV))
+    }
+
+    pub(super) fn list_interfaces_from_paths(
+        sys_path: &Path,
+        proc_net_dev: &Path,
+    ) -> Result<Vec<InterfaceInfo>, RustethError> {
         let mut interfaces = Vec::new();
-        let stats = read_proc_net_dev()?;
-        let sys_path = Path::new(SYS_CLASS_NET);
+        let stats = read_proc_net_dev(proc_net_dev)?;
 
         for entry in fs::read_dir(sys_path).map_err(|err| RustethError::io(sys_path, err))? {
             let entry = entry.map_err(|err| RustethError::io(sys_path, err))?;
@@ -236,7 +246,7 @@ mod linux {
         Ok(interfaces)
     }
 
-    fn read_trimmed(path: &PathBuf) -> Result<Option<String>, RustethError> {
+    fn read_trimmed(path: &Path) -> Result<Option<String>, RustethError> {
         match fs::read_to_string(path) {
             Ok(value) => {
                 let v = value.trim().to_string();
@@ -246,24 +256,40 @@ mod linux {
                     Ok(Some(v))
                 }
             }
-            Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(err)
+                if matches!(
+                    err.kind(),
+                    std::io::ErrorKind::NotFound | std::io::ErrorKind::InvalidInput
+                ) =>
+            {
+                Ok(None)
+            }
             Err(err) => Err(RustethError::io(path, err)),
         }
     }
 
-    fn read_u32(path: &PathBuf) -> Result<Option<u32>, RustethError> {
+    fn read_u32(path: &Path) -> Result<Option<u32>, RustethError> {
         match read_trimmed(path)? {
-            Some(value) => value
-                .parse::<u32>()
-                .map(Some)
-                .map_err(|err| RustethError::parse(path, err.to_string())),
+            Some(value) => {
+                if value.eq_ignore_ascii_case("unknown") || value == "-1" {
+                    Ok(None)
+                } else {
+                    value
+                        .parse::<u32>()
+                        .map(Some)
+                        .map_err(|err| RustethError::parse(path, err.to_string()))
+                }
+            }
             None => Ok(None),
         }
     }
 
-    fn read_proc_net_dev() -> Result<HashMap<String, InterfaceStats>, RustethError> {
-        let contents =
-            fs::read_to_string(PROC_NET_DEV).map_err(|err| RustethError::io(PROC_NET_DEV, err))?;
+    fn read_proc_net_dev(path: &Path) -> Result<HashMap<String, InterfaceStats>, RustethError> {
+        let contents = fs::read_to_string(path).map_err(|err| RustethError::io(path, err))?;
+        Ok(parse_proc_net_dev(&contents))
+    }
+
+    pub(super) fn parse_proc_net_dev(contents: &str) -> HashMap<String, InterfaceStats> {
         let mut stats = HashMap::new();
         for line in contents.lines().skip(2) {
             if let Some((name_part, data_part)) = line.split_once(':') {
@@ -277,7 +303,7 @@ mod linux {
                 stats.insert(name, InterfaceStats { rx_bytes, tx_bytes });
             }
         }
-        Ok(stats)
+        stats
     }
 }
 
@@ -285,6 +311,66 @@ mod linux {
 mod tests {
     use super::*;
     use std::path::Path;
+    #[cfg(target_os = "linux")]
+    use tempfile::tempdir;
+
+    #[test]
+    fn apply_netplan_with_interfaces_detects_missing_links() {
+        let mut doc = NetplanDocument {
+            network: NetworkSection {
+                version: Some(2),
+                renderer: Some("networkd".into()),
+                ethernets: BTreeMap::new(),
+            },
+        };
+        doc.network
+            .ethernets
+            .insert("eth42".into(), EthernetConfig::default());
+
+        let interfaces = vec![InterfaceInfo {
+            name: "eth0".into(),
+            mac_address: None,
+            oper_state: None,
+            mtu: None,
+            speed_mbps: None,
+            stats: InterfaceStats::default(),
+        }];
+
+        let err = apply_netplan_with_interfaces(&doc, true, &interfaces).unwrap_err();
+        match err {
+            RustethError::ConfigValidation(message) => {
+                assert!(message.contains("eth42"), "unexpected message: {message}");
+            }
+            other => panic!("expected validation error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn apply_netplan_with_interfaces_passes_when_all_present() {
+        let mut doc = NetplanDocument {
+            network: NetworkSection {
+                version: Some(2),
+                renderer: Some("networkd".into()),
+                ethernets: BTreeMap::new(),
+            },
+        };
+        doc.network
+            .ethernets
+            .insert("eth0".into(), EthernetConfig::default());
+
+        let interfaces = vec![InterfaceInfo {
+            name: "eth0".into(),
+            mac_address: None,
+            oper_state: None,
+            mtu: None,
+            speed_mbps: None,
+            stats: InterfaceStats::default(),
+        }];
+
+        let result = apply_netplan_with_interfaces(&doc, true, &interfaces).unwrap();
+        assert!(result.dry_run);
+        assert_eq!(result.planned_interfaces, vec!["eth0".to_string()]);
+    }
 
     #[test]
     fn detects_format_from_extension() {
@@ -324,5 +410,53 @@ network:
         assert_eq!(doc.network.version, Some(2));
         assert!(doc.network.ethernets.contains_key("eth0"));
         std::fs::remove_file(temp_path).unwrap();
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn parses_proc_net_dev_snapshot() {
+        let snapshot = "Inter-|   Receive                                                |  Transmit\n    face |bytes    packets errs drop fifo frame compressed multicast|bytes    packets errs drop fifo colls carrier compressed\n  lo: 12345      10    0    0    0     0          0         0  67890      12    0    0    0     0       0          0\neth0: 55555     200    0    0    0     0          0       100  44444     150    0    0    0     0       0          0";
+        let stats = super::linux::parse_proc_net_dev(snapshot);
+        let lo = stats.get("lo").expect("lo stats");
+        assert_eq!(lo.rx_bytes, Some(12345));
+        assert_eq!(lo.tx_bytes, Some(67890));
+
+        let eth0 = stats.get("eth0").expect("eth0 stats");
+        assert_eq!(eth0.rx_bytes, Some(55555));
+        assert_eq!(eth0.tx_bytes, Some(44444));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn lists_interfaces_from_fixture_tree() {
+        use std::fs;
+
+        let temp = tempdir().unwrap();
+        let sys_path = temp.path().join("sys/class/net");
+        fs::create_dir_all(&sys_path).unwrap();
+        let iface_dir = sys_path.join("eth0");
+        fs::create_dir_all(&iface_dir).unwrap();
+        fs::write(iface_dir.join("address"), "aa:bb:cc:dd:ee:ff\n").unwrap();
+        fs::write(iface_dir.join("operstate"), "up\n").unwrap();
+        fs::write(iface_dir.join("mtu"), "1500\n").unwrap();
+        fs::write(iface_dir.join("speed"), "1000\n").unwrap();
+
+        let proc_path = temp.path().join("proc/net/dev");
+        fs::create_dir_all(proc_path.parent().unwrap()).unwrap();
+        let proc_contents = "Inter-|   Receive                                                |  Transmit\n    face |bytes    packets errs drop fifo frame compressed multicast|bytes    packets errs drop fifo colls carrier compressed\neth0: 100      1    0    0    0     0          0         0  200      2    0    0    0     0       0          0";
+        fs::write(&proc_path, proc_contents).unwrap();
+
+        let interfaces =
+            super::linux::list_interfaces_from_paths(sys_path.as_path(), proc_path.as_path())
+                .expect("list interfaces from fixtures");
+        assert_eq!(interfaces.len(), 1);
+        let iface = &interfaces[0];
+        assert_eq!(iface.name, "eth0");
+        assert_eq!(iface.mac_address.as_deref(), Some("aa:bb:cc:dd:ee:ff"));
+        assert_eq!(iface.oper_state.as_deref(), Some("up"));
+        assert_eq!(iface.mtu, Some(1500));
+        assert_eq!(iface.speed_mbps, Some(1000));
+        assert_eq!(iface.stats.rx_bytes, Some(100));
+        assert_eq!(iface.stats.tx_bytes, Some(200));
     }
 }
