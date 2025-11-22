@@ -417,7 +417,7 @@ mod app {
 
     fn ifindex_to_name(index: u32) -> Option<String> {
         unsafe {
-            let mut name = [0i8; libc::IFNAMSIZ];
+            let mut name = [0 as libc::c_char; libc::IFNAMSIZ];
             let ptr = libc::if_indextoname(index, name.as_mut_ptr());
             if ptr.is_null() {
                 return None;
@@ -473,11 +473,6 @@ mod app {
             .init();
     }
 
-    #[tokio::main]
-    pub async fn main() -> Result<()> {
-        run().await
-    }
-
     #[cfg(test)]
     mod tests {
         use super::*;
@@ -500,6 +495,7 @@ mod app {
 }
 
 #[cfg(target_os = "linux")]
-fn main() -> anyhow::Result<()> {
-    app::main()
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    app::run().await
 }

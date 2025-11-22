@@ -502,9 +502,11 @@ mod linux {
             let rt = Runtime::new().map_err(|err| {
                 RustethError::Apply(format!("failed to initialize tokio runtime: {err}"))
             })?;
+            let guard = rt.enter();
             let (connection, handle, _) = new_connection().map_err(|err| {
                 RustethError::Apply(format!("failed to connect to netlink: {err}"))
             })?;
+            drop(guard);
             rt.spawn(connection);
             Ok(Self {
                 rt,
